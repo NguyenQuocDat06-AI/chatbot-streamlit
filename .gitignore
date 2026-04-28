@@ -1,5 +1,11 @@
+venv/
+__pycache__/
+*.pyc
 .rules.md
 .env
 *.pdf
 secrets.toml
 venv/
+backend/landmark_recognizer/weights/
+backend/landmark_recognizer/cached/
+.DS_Store

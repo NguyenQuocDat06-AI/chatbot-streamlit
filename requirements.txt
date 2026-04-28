@@ -11,3 +11,8 @@ fastapi
 uvicorn
 python-multipart
 faiss-cpu
+streamlit
+firebase-admin
+requests
+pydantic-settings
+toml
