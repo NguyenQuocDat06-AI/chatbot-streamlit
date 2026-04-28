@@ -1,3 +1,5 @@
 .rules.md
 .env
 *.pdf
+secrets.toml
+venv/
