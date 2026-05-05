@@ -40,6 +40,8 @@ if "user_email" not in st.session_state:
 def logout():
     st.session_state.idToken = None
     st.session_state.user_email = None
+    if "messages" in st.session_state:
+        del st.session_state.messages
     st.rerun()
 
 # ─── Giao diện Đăng nhập / Đăng ký ───────────────────────────────────────────
@@ -104,53 +106,15 @@ if not st.session_state.idToken:
 
 # ─── Giao diện Chính (Sau khi đăng nhập) ────────────────────────────────────
 else:
-    col1, col2 = st.columns([8, 2])
-    with col1:
-        st.title("🗺️ AI Landmark Detector")
-    with col2:
-        st.write(f"Xin chào, **{st.session_state.user_email}**")
-        st.button("Đăng xuất", on_click=logout)
+    # ─── Sidebar: Lịch sử & Đăng xuất ────────────────────────────────────────
+    with st.sidebar:
+        st.write(f"👤 **{st.session_state.user_email}**")
+        st.button("🚪 Đăng xuất", on_click=logout, use_container_width=True)
+        st.markdown("---")
         
-    st.markdown("---")
-    
-    # ─── Chia 2 cột: Tính năng & Lịch sử ─────────────────────────────────────
-    left_col, right_col = st.columns([2, 1])
-    
-    with left_col:
-        st.subheader("Nhận dạng địa điểm")
-        uploaded_file = st.file_uploader("Upload ảnh địa điểm (JPG, PNG)", type=['jpg', 'jpeg', 'png'])
-        
-        if uploaded_file is not None:
-            image = Image.open(uploaded_file)
-            st.image(image, caption="Ảnh đã tải lên", use_container_width=True)
-            
-            if st.button("🔍 Phân tích ảnh", type="primary"):
-                with st.spinner("AI đang phân tích..."):
-                    try:
-                        files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
-                        headers = {"Authorization": f"Bearer {st.session_state.idToken}"}
-                        
-                        response = requests.post(f"{BACKEND_URL}/chat/predict", files=files, headers=headers)
-                        
-                        if response.status_code == 200:
-                            res_data = response.json()
-                            if res_data.get("success"):
-                                st.success(f"Dự đoán thành công trong {res_data.get('processing_time')}s")
-                                st.markdown(f"### 📍 Địa điểm: **{res_data.get('location_name')}**")
-                                st.info(f"Label ID: {res_data.get('label')} | Inliers: {res_data.get('inliers')}")
-                            else:
-                                st.warning("Không thể nhận diện được địa điểm trong ảnh này.")
-                        else:
-                            st.error(f"Lỗi từ server: {response.text}")
-                    except requests.exceptions.ConnectionError:
-                        st.error("Không thể kết nối đến Backend Server (localhost:8000). Vui lòng kiểm tra server.")
-                    except Exception as e:
-                        st.error(f"Lỗi không xác định: {e}")
-                        
-    with right_col:
         st.subheader("🕒 Lịch sử tra cứu")
-        if st.button("Làm mới lịch sử", use_container_width=True):
-            pass # Nút này tự trigger rerun component này
+        if st.button("🔄 Làm mới", use_container_width=True):
+            pass
             
         try:
             headers = {"Authorization": f"Bearer {st.session_state.idToken}"}
@@ -159,14 +123,77 @@ else:
             if res.status_code == 200:
                 history_data = res.json().get("history", [])
                 if not history_data:
-                    st.info("Chưa có lịch sử tra cứu nào.")
+                    st.info("Chưa có lịch sử.")
                 else:
                     for idx, item in enumerate(history_data):
-                        with st.expander(f"{item.get('location_name')} - {item.get('file_name')} ({item.get('timestamp')[:10]})"):
-                            st.write(f"**Thời gian:** {item.get('timestamp')}")
+                        with st.expander(f"📍 {item.get('location_name')} ({item.get('timestamp')[:10]})"):
+                            st.write(f"**File:** {item.get('file_name')}")
                             st.write(f"**Inliers:** {item.get('inliers')}")
-                            st.write(f"**Tốc độ xử lý:** {item.get('processing_time')}s")
+                            st.write(f"**Tốc độ:** {item.get('processing_time')}s")
             else:
-                st.error("Không thể tải lịch sử từ server.")
+                st.error("Không thể tải lịch sử.")
         except requests.exceptions.ConnectionError:
             st.error("Backend offline.")
+
+    # ─── Main Area: Chat Interface ───────────────────────────────────────────
+    st.title("🗺️ AI Landmark Detector")
+    
+    # Khởi tạo tin nhắn chào mừng nếu chưa có
+    if "messages" not in st.session_state:
+        st.session_state.messages = [{"role": "assistant", "type": "text", "content": "Xin chào! Hãy tải lên một bức ảnh địa danh tại Việt Nam, tôi sẽ giúp bạn nhận diện nó."}]
+        
+    # Cấu hình key cho uploader để reset sau khi upload
+    if "uploader_key" not in st.session_state:
+        st.session_state.uploader_key = str(time.time())
+
+    # Hiển thị lịch sử chat trong phiên hiện tại
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            if msg.get("type") == "image":
+                st.image(msg["content"], width=300)
+            else:
+                st.markdown(msg["content"])
+                
+    # Vùng Upload ảnh ở cuối đoạn chat
+    st.markdown("---")
+    uploaded_file = st.file_uploader("📎 Tải lên ảnh địa điểm (JPG, PNG)", type=['jpg', 'jpeg', 'png'], key=st.session_state.uploader_key)
+    
+    if uploaded_file is not None:
+        image_bytes = uploaded_file.getvalue()
+        
+        # 1. Hiển thị ảnh của người dùng trong chat
+        st.session_state.messages.append({"role": "user", "type": "image", "content": image_bytes})
+        
+        with st.chat_message("user"):
+            st.image(image_bytes, width=300)
+            
+        # 2. AI xử lý và trả lời
+        with st.chat_message("assistant"):
+            with st.spinner("AI đang phân tích ảnh..."):
+                try:
+                    files = {"file": (uploaded_file.name, image_bytes, uploaded_file.type)}
+                    headers = {"Authorization": f"Bearer {st.session_state.idToken}"}
+                    
+                    response = requests.post(f"{BACKEND_URL}/chat/predict", files=files, headers=headers)
+                    
+                    if response.status_code == 200:
+                        res_data = response.json()
+                        if res_data.get("success"):
+                            reply_text = f"📍 Đây có vẻ là **{res_data.get('location_name')}**.\n\n*(Độ tin cậy/Inliers: {res_data.get('inliers')} | Thời gian: {res_data.get('processing_time')}s)*"
+                        else:
+                            reply_text = "⚠️ Xin lỗi, tôi không thể nhận diện được địa điểm trong ảnh này."
+                    else:
+                        reply_text = f"❌ Lỗi từ server: {response.text}"
+                except requests.exceptions.ConnectionError:
+                    reply_text = "❌ Không thể kết nối đến Backend Server (localhost:8000)."
+                except Exception as e:
+                    reply_text = f"❌ Lỗi không xác định: {e}"
+                
+                st.markdown(reply_text)
+                
+                # Lưu câu trả lời của AI vào session
+                st.session_state.messages.append({"role": "assistant", "type": "text", "content": reply_text})
+                
+        # 3. Thay đổi key để reset vùng upload và rerun để vẽ lại UI
+        st.session_state.uploader_key = str(time.time())
+        st.rerun()

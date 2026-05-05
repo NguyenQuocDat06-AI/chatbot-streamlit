@@ -10,14 +10,16 @@ Dự án này là một ứng dụng Web phân tách rõ ràng Frontend và Back
 
 ## Cấu trúc Thư Mục
 ```text
-project/
-├── secrets.toml               (Chứa thông tin cấu hình Firebase, API keys)
-├── requirements.txt           (Các thư viện cần thiết)
-├── frontend/
-│   ├── app.py                 (Giao diện chính của Streamlit)
-│   └── firebase_auth.py       (Xử lý xác thực Firebase qua REST API)
-└── backend/
-    ├── main.py                (Entry point của FastAPI)
+chatbot-streamlit/
+├── .gitignore                 (Dùng để loại bỏ các file cache, file tạm, secrets, token, private key)
+├── README.md                  (Chứa hướng dẫn cài đặt environment, cách chạy frontend/backend và link video demo)
+├── requirements.txt           (Liệt kê các thư viện Python cần thiết (FastAPI, Streamlit, PyTorch, v.v.))
+├── frontend/                  (Thư mục dùng để hiển thị giao diện và gửi request)
+│   ├── app.py                 (File chính chạy giao diện Streamlit, hiển thị đăng nhập và tính năng gửi ảnh)
+│   ├── firebase_auth.py       (Xử lý giao diện và logic đăng nhập, đăng xuất bằng Firebase Authentication)
+│   └── components/            (Tùy chọn) Chứa các module giao diện nhỏ gọn, hiển thị kết quả
+└── backend/                   (Thư mục dùng để xử lý logic, xác thực và thao tác với database)
+    ├── main.py                (File khởi tạo app FastAPI, chứa các endpoint cơ bản như GET / và GET /health)
     ├── core/                  (Load config từ secrets.toml và setup Firebase Admin)
     ├── routers/               (Endpoints cho /auth và /chat)
     ├── schemas/               (Pydantic models)

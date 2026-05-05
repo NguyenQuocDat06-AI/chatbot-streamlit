@@ -9,3 +9,4 @@ venv/
 backend/landmark_recognizer/weights/
 backend/landmark_recognizer/cached/
 .DS_Store
+*.txt
