@@ -1,14 +1,16 @@
 import logging
-import requests
+import requests as http_requests
 from fastapi import APIRouter, Depends, HTTPException, Header
 from fastapi.responses import RedirectResponse
 from firebase_admin import auth as firebase_admin_auth
 from typing import Optional
-from backend.core.config import config
+from backend.core.config import config, FIREBASE_WEB_API_KEY
+from backend.schemas.message import LoginRequest, RegisterRequest, AuthResponse
 
 logger = logging.getLogger("LandmarkAPI.Auth")
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
 
 def get_current_user(authorization: Optional[str] = Header(None)) -> str:
     """Dependency: Validate Firebase ID token từ request header. Trả về user_id"""
@@ -24,6 +26,79 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> str:
         logger.error(f"Token verification failed: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
 
+
+
+@router.post("/login", response_model=AuthResponse)
+async def login(body: LoginRequest):
+    """Đăng nhập bằng email/password. Backend proxy gọi Firebase Identity Toolkit."""
+    firebase_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_WEB_API_KEY}"
+    payload = {
+        "email": body.email,
+        "password": body.password,
+        "returnSecureToken": True
+    }
+    
+    try:
+        res = http_requests.post(firebase_url, json=payload)
+        data = res.json()
+        
+        if res.status_code != 200:
+            error_msg = data.get("error", {}).get("message", "Login failed")
+            logger.warning(f"Login failed for {body.email}: {error_msg}")
+            raise HTTPException(status_code=401, detail=error_msg)
+        
+        logger.info(f"User logged in: {body.email}")
+        return AuthResponse(
+            success=True,
+            idToken=data.get("idToken"),
+            refreshToken=data.get("refreshToken"),
+            email=data.get("email"),
+            localId=data.get("localId"),
+            message="Login successful"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/register", response_model=AuthResponse)
+async def register(body: RegisterRequest):
+    """Đăng ký tài khoản email/password mới. Backend proxy gọi Firebase Identity Toolkit."""
+    firebase_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_WEB_API_KEY}"
+    payload = {
+        "email": body.email,
+        "password": body.password,
+        "returnSecureToken": True
+    }
+    
+    try:
+        res = http_requests.post(firebase_url, json=payload)
+        data = res.json()
+        
+        if res.status_code != 200:
+            error_msg = data.get("error", {}).get("message", "Registration failed")
+            logger.warning(f"Registration failed for {body.email}: {error_msg}")
+            raise HTTPException(status_code=400, detail=error_msg)
+        
+        logger.info(f"New user registered: {body.email}")
+        return AuthResponse(
+            success=True,
+            idToken=data.get("idToken"),
+            refreshToken=data.get("refreshToken"),
+            email=data.get("email"),
+            localId=data.get("localId"),
+            message="Registration successful"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Registration error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+
 @router.get("/me")
 async def get_me(user_id: str = Depends(get_current_user)):
     """Trả về thông tin user (test endpoint)"""
@@ -38,13 +113,12 @@ async def get_me(user_id: str = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="User not found")
 
 
-# --- Google Login Oauth2 Endpoints ---
 google_config = config.get("google-login", {})
 GOOGLE_CLIENT_ID = google_config.get("google_client_id")
 GOOGLE_CLIENT_SECRET = google_config.get("google_client_secret")
 GOOGLE_REDIRECT_URI = google_config.get("google_redirect_uri")
 FRONTEND_URL = google_config.get("frontend_url", "http://localhost:8501")
-FIREBASE_API_KEY = google_config.get("firebase_web_api_key")
+FIREBASE_API_KEY_GOOGLE = google_config.get("firebase_web_api_key")
 
 @router.get("/google/start")
 def google_start():
@@ -61,7 +135,6 @@ def google_start():
 
 @router.get("/google/callback")
 def google_callback(code: str):
-    # 1. Exchange code for Google token
     token_url = "https://oauth2.googleapis.com/token"
     data = {
         "client_id": GOOGLE_CLIENT_ID,
@@ -71,7 +144,7 @@ def google_callback(code: str):
         "redirect_uri": GOOGLE_REDIRECT_URI
     }
     
-    token_res = requests.post(token_url, data=data)
+    token_res = http_requests.post(token_url, data=data)
     token_data = token_res.json()
     
     if "id_token" not in token_data:
@@ -79,9 +152,8 @@ def google_callback(code: str):
         raise HTTPException(status_code=400, detail="Google authentication failed")
         
     google_id_token = token_data["id_token"]
-    
-    # 2. Login to Firebase using Google ID Token via Identity Toolkit REST API
-    firebase_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key={FIREBASE_API_KEY}"
+
+    firebase_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key={FIREBASE_API_KEY_GOOGLE}"
     firebase_data = {
         "postBody": f"id_token={google_id_token}&providerId=google.com",
         "requestUri": FRONTEND_URL,
@@ -89,7 +161,7 @@ def google_callback(code: str):
         "returnSecureToken": True
     }
     
-    firebase_res = requests.post(firebase_url, json=firebase_data)
+    firebase_res = http_requests.post(firebase_url, json=firebase_data)
     firebase_data_res = firebase_res.json()
     
     if "idToken" not in firebase_data_res:
@@ -99,6 +171,5 @@ def google_callback(code: str):
     firebase_id_token = firebase_data_res["idToken"]
     firebase_email = firebase_data_res.get("email", "")
     
-    # Redirect back to frontend with tokens
     redirect_url = f"{FRONTEND_URL}/?idToken={firebase_id_token}&email={firebase_email}"
     return RedirectResponse(url=redirect_url)

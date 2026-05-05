@@ -3,6 +3,22 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 # --- Auth Schemas ---
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+
+class AuthResponse(BaseModel):
+    success: bool
+    idToken: Optional[str] = None
+    refreshToken: Optional[str] = None
+    email: Optional[str] = None
+    localId: Optional[str] = None
+    message: Optional[str] = None
+
 class TokenRequest(BaseModel):
     token: str
 

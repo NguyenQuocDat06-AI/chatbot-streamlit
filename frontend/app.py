@@ -1,28 +1,12 @@
 import streamlit as st
-import toml
 import os
 import requests
 import time
-from firebase_auth import FirebaseAuth
-from PIL import Image
 
 # ─── Cấu hình chung ────────────────────────────────────────────────────────
 st.set_page_config(page_title="Landmark Detector", page_icon="🗺️", layout="wide")
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_dir = os.path.abspath(os.path.join(current_dir, '..'))
-secrets_path = os.path.join(project_dir, 'secrets.toml')
-
-# Load API keys
-try:
-    config = toml.load(secrets_path)
-    API_KEY = config.get("firebase_client", {}).get("apiKey", "")
-    BACKEND_URL = "http://localhost:8000"
-except Exception as e:
-    st.error(f"Lỗi đọc file secrets.toml: {e}")
-    st.stop()
-
-auth = FirebaseAuth(API_KEY)
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 
 # ─── Xử lý Token từ Google Login (Query Params) ─────────────────────────────
 if "idToken" in st.query_params:
@@ -76,12 +60,23 @@ if not st.session_state.idToken:
             if submit_login:
                 try:
                     with st.spinner("Đang đăng nhập..."):
-                        user = auth.sign_in_with_email_and_password(login_email, login_password)
-                        st.session_state.idToken = user['idToken']
-                        st.session_state.user_email = user['email']
-                    st.success("Đăng nhập thành công!")
-                    time.sleep(1)
-                    st.rerun()
+                        res = requests.post(
+                            f"{BACKEND_URL}/auth/login",
+                            json={"email": login_email, "password": login_password}
+                        )
+                        
+                        if res.status_code == 200:
+                            data = res.json()
+                            st.session_state.idToken = data["idToken"]
+                            st.session_state.user_email = data["email"]
+                            st.success("Đăng nhập thành công!")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            error_detail = res.json().get("detail", "Đăng nhập thất bại")
+                            st.error(f"Lỗi đăng nhập: {error_detail}")
+                except requests.exceptions.ConnectionError:
+                    st.error("Không thể kết nối đến Backend Server.")
                 except Exception as e:
                     st.error(f"Lỗi đăng nhập: {e}")
                     
@@ -95,12 +90,24 @@ if not st.session_state.idToken:
             if submit_reg:
                 try:
                     with st.spinner("Đang đăng ký..."):
-                        user = auth.create_user_with_email_and_password(reg_email, reg_password)
-                        st.session_state.idToken = user['idToken']
-                        st.session_state.user_email = user['email']
-                    st.success("Đăng ký thành công!")
-                    time.sleep(1)
-                    st.rerun()
+                        # Gọi backend API thay vì gọi Firebase trực tiếp
+                        res = requests.post(
+                            f"{BACKEND_URL}/auth/register",
+                            json={"email": reg_email, "password": reg_password}
+                        )
+                        
+                        if res.status_code == 200:
+                            data = res.json()
+                            st.session_state.idToken = data["idToken"]
+                            st.session_state.user_email = data["email"]
+                            st.success("Đăng ký thành công!")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            error_detail = res.json().get("detail", "Đăng ký thất bại")
+                            st.error(f"Lỗi đăng ký: {error_detail}")
+                except requests.exceptions.ConnectionError:
+                    st.error("Không thể kết nối đến Backend Server.")
                 except Exception as e:
                     st.error(f"Lỗi đăng ký: {e}")
 
@@ -167,7 +174,7 @@ else:
         with st.chat_message("user"):
             st.image(image_bytes, width=300)
             
-        # 2. AI xử lý và trả lời
+        # 2. AI xử lý và trả lời — gọi backend API
         with st.chat_message("assistant"):
             with st.spinner("AI đang phân tích ảnh..."):
                 try:
