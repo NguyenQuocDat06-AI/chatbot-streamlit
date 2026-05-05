@@ -16,3 +16,4 @@ firebase-admin
 requests
 pydantic-settings
 toml
+streamlit-js-eval

@@ -1,5 +1,5 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel
+from typing import Optional, List
 from datetime import datetime
 
 # --- Auth Schemas ---
@@ -27,27 +27,40 @@ class UserResponse(BaseModel):
     email: Optional[str] = None
     email_verified: bool = False
 
-# --- Predict/Chat Schemas ---
+# --- Conversation Schemas ---
+class CreateConversationResponse(BaseModel):
+    id: str
+    title: str
+
+class ConversationItem(BaseModel):
+    id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+
+class ConversationListResponse(BaseModel):
+    total: int
+    conversations: List[ConversationItem]
+
+class MessageItem(BaseModel):
+    id: str
+    role: str
+    content_type: str
+    content: str
+    timestamp: datetime
+
+class ConversationDetailResponse(BaseModel):
+    id: str
+    title: str
+    messages: List[MessageItem]
+
+# --- Predict Schemas ---
 class PredictResponse(BaseModel):
     success: bool
     label: Optional[str] = None
     location_name: Optional[str] = None
     inliers: int
     processing_time: float
-
-class ChatHistoryItem(BaseModel):
-    id: str
-    user_id: str
-    image_url: Optional[str] = None 
-    file_name: Optional[str] = None
-    location_name: Optional[str] = None
-    inliers: Optional[int] = 0
-    processing_time: Optional[float] = 0.0
-    timestamp: datetime
-
-class ChatHistoryResponse(BaseModel):
-    total: int
-    history: List[ChatHistoryItem]
 
 class HealthResponse(BaseModel):
     status: str
